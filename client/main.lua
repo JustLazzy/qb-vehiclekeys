@@ -6,6 +6,7 @@ local IsRobbing = false
 local IsHotwiring = false
 local AlertSend = false
 local lockpicked = false
+local animStart = false
 local lockpickedPlate = nil
 local usingAdvanced
 
@@ -182,6 +183,42 @@ local function lockpickFinish(success)
     end
 end
 
+RegisterCommand('stopanim', function ()
+    ClearPedTasks(PlayerPedId())
+end)
+
+local function lockpickStart()
+    -- local success
+    if usingAdvanced then
+        lockpickFinish(true)
+    else
+        animStart = true
+        LockPickingAnimation()
+        local success = exports['qb-lock']:StartLockPickCircle(math.random(4, 8), math.random(7, 12))
+        if success then
+            lockpickFinish(true)
+            animStart = false
+            StopAnimTask(PlayerPedId(), "veh@break_in@0h@p_m_one@", "low_force_entry_ds", 1.0)
+        else
+            lockpickFinish(false)
+            animStart = false
+            StopAnimTask(PlayerPedId(), "veh@break_in@0h@p_m_one@", "low_force_entry_ds", 1.0)
+        end
+    end
+end
+
+function LockPickingAnimation()
+    CreateThread(function ()
+        while animStart do
+            loadAnimDict("veh@break_in@0h@p_m_one@")
+            TaskPlayAnim(PlayerPedId(), "veh@break_in@0h@p_m_one@", "low_force_entry_ds" ,3.0, 3.0, 10000, 16, 0, false, false, false)
+            Wait(1000)
+        end
+    end)
+end
+
+
+
 local function LockpickDoor(isAdvanced)
     local ped = PlayerPedId()
     local pos = GetEntityCoords(ped)
@@ -192,7 +229,8 @@ local function LockpickDoor(isAdvanced)
             local vehLockStatus = GetVehicleDoorLockStatus(vehicle)
             if (vehLockStatus > 0) then
                 usingAdvanced = isAdvanced
-                TriggerEvent('qb-lockpick:client:openLockpick', lockpickFinish)
+                lockpickStart()
+                -- TriggerEvent('qb-lockpick:client:openLockpick', lockpickFinish)
             end
         end
     end
@@ -208,34 +246,22 @@ local function Hotwire()
         SetVehicleAlarm(vehicle, true)
         SetVehicleAlarmTimeLeft(vehicle, hotwireTime)
         PoliceCall()
-        QBCore.Functions.Progressbar("hotwire_vehicle", "Engaging the ignition switch", hotwireTime, false, true, {
-            disableMovement = true,
-            disableCarMovement = true,
-            disableMouse = false,
-            disableCombat = true
-        }, {
-            animDict = "anim@amb@clubhouse@tutorial@bkr_tut_ig3@",
-            anim = "machinic_loop_mechandplayer",
-            flags = 16
-        }, {}, {}, function() -- Done
-            StopAnimTask(ped, "anim@amb@clubhouse@tutorial@bkr_tut_ig3@", "machinic_loop_mechandplayer", 1.0)
-            if (math.random() <= Config.HotwireChance) then
-                lockpicked = false
-                TriggerServerEvent('hud:server:GainStress', math.random(1, 4))
-                TriggerEvent('vehiclekeys:client:SetOwner', QBCore.Functions.GetPlate(vehicle))
-                QBCore.Functions.Notify("Hotwire succeeded!")
-            else
-                SetVehicleEngineOn(veh, false, false, true)
-                TriggerServerEvent('hud:server:GainStress', math.random(1, 4))
-                QBCore.Functions.Notify("Hotwire failed!", "error")
-            end
+        loadAnimDict("anim@amb@clubhouse@tutorial@bkr_tut_ig3@")
+        TaskPlayAnim(ped, "anim@amb@clubhouse@tutorial@bkr_tut_ig3@", "machinic_loop_mechandplayer", 8.0, -8.0, -1, 16, 0, false, false, false)
+        local success = exports['qb-lock']:StartLockPickCircle(math.random(5, 10), math.random(10, 20))
+        -- Animation
+
+        if success then
+            TriggerServerEvent('hud:server:GainStress', math.random(1, 4))
+            TriggerEvent('vehiclekeys:client:SetOwner', QBCore.Functions.GetPlate(vehicle))
             IsHotwiring = false
-        end, function() -- Cancel
-            StopAnimTask(ped, "anim@amb@clubhouse@tutorial@bkr_tut_ig3@", "machinic_loop_mechandplayer", 1.0)
+            ClearPedTasks(ped)
+            QBCore.Functions.Notify('Hotwired Vehicle!', 'success')
+        else
             SetVehicleEngineOn(veh, false, false, true)
-            QBCore.Functions.Notify("Hotwire failed!", "error")
             IsHotwiring = false
-        end)
+            ClearPedTasks(ped)
+        end
     end
 end
 
